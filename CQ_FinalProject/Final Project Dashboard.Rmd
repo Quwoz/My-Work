@@ -1,0 +1,142 @@
+---
+title: "Exploring Wastewater Treatment Plants (WWTP) Usage Near Coastal and Freshwater Regions in the United States"
+output: flexdashboard::flex_dashboard
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(viridis)
+library(ggrepel)
+library(plotly)
+```
+
+
+Page 1 - Introduction
+=====================================
+
+```{r echo=FALSE, out.width = "40%", fig.align = "left"}
+knitr::include_graphics("WWTP.jpg")
+```
+
+### Wastewater Treatment plants (WWTP) are designed to remove pollutants through physical, chemical and biological processes to mitigate damage to the surrounding environment. I want to observe the types of factors influencing treatment procedures and pollutants through these three questions:
+
+**1. How do the wastewater treatment plans differ from WWTPs near the shoreline and those more inland?**
+
+**2. Is there a relationship between the amount of river water discharged from a WWTP, the treatment quality and the amount of pollutants?**
+
+**3. Does the river discharge have an influence on the operational status of a WWTP?**
+  
+Data Cleaning: Filtering only United States WWTPs into data visualizations, reordering factor levels of wastewater treatment type, renaming WWTP coast distances and converting the coast distance data to long format.
+
+Dataset: [HydroWASTE_v10.csv](https://github.com/rfordatascience/tidytuesday/tree/master/data/2022/2022-09-20)
+
+By: Connor Quiroz, California State University, Monterey Bay
+```{r}
+waste <- read.csv("HydroWASTE_v10.csv") %>%
+  filter(COUNTRY == "United States") %>%
+  mutate(LEVEL = factor(LEVEL, levels = c("Primary", "Secondary", "Advanced"))) %>% 
+  mutate(distance = case_when(COAST_10KM == 1 & COAST_50KM == 0 ~ "Within 10km of Coast",
+                              COAST_10KM == 1 & COAST_50KM == 1 ~ "Within 10km of Coast",
+                              COAST_10KM == 0 & COAST_50KM == 0 ~ "Beyond 50km from Coast",
+                              COAST_10KM == 0 & COAST_50KM == 1 ~ "Within 50km of Coast"))
+
+  # waste$COAST_10KM <-  ifelse(waste$COAST_10KM=="1","Within 10km of Coast",0)
+  # waste$COAST_50KM <- ifelse(waste$COAST_50KM=="1","Within 50km of Coast",0)
+  # 
+  # waste <- waste %>%
+  #   pivot_longer(c("COAST_10KM", "COAST_50KM")) %>% #Tyler Morgan helped me with conversion to long format
+  # 
+  # fct_recode(value, `Test` =  "0")
+
+  
+  # waste <- full_join(waste, by = c("COAST_10KM", ""))
+
+```
+
+
+
+Page 2 - Coastal WWTPs
+=====================================  
+    
+Column {data-width=600}
+-------------------------------------
+Primary treatment allows solids to (settle and be removed from wastewater, secondary treatment uses biological processes to
+further purify wastewater and advanced treatment uses new experimental techniques including filtration, carbon adsorption, distillation and reverse osmosis ([EPA](https://www3.epa.gov/npdes/pubs/bastre.pdf)). Using more treatments removes more water pollutants.
+
+### Most WWTPs are further than 50km\nof the coast, with <50km being the next\nmost frequent, and the least amount of WWTPS\nbeing within 10km of the beach.
+```{r}
+ static_plot <- waste %>%
+  ggplot(aes(x = distance)) + geom_bar(aes(fill = distance), position = "stack") + 
+  scale_fill_viridis_d(begin = 0, end = 0.7) + labs(x = "Distance of Treatment Plant from Coast", y = "Number of WWTPs", title = "Distribution of WWTPs Based on Distance in the United States") + 
+  guides(fill = "none")
+
+ggplotly(static_plot)
+# waste %>%
+#   ggplot() + geom_histogram(aes(x = DF), bins = 20)
+# 
+# waste %>%
+#   ggplot(aes(x = QUAL_LEVEL)) + geom_bar() + facet_wrap(~ LEVEL)
+```
+   
+Column {data-width=400}
+-------------------------------------
+   
+### As the design capacity increases for a WWTP increases, the amount of the population members served also increases.
+
+```{r}
+static_plot2 <- waste %>%
+  ggplot(aes(x = DESIGN_CAP, y = POP_SERVED)) + 
+  labs(x = "Design Capacity (people)", y = "Population Served (people)", title = "Comparing WWTP Population Served to Their Design Capacity") + 
+  geom_smooth(method = lm) + geom_point()
+ggplotly(static_plot2)
+```   
+ 
+### A higher proportion of WTTPS within 50km of the coast use advanced treatment procedures than only secondary treatment.
+    
+```{r}
+  # waste$value <- recode_factor(waste$value, "Within 10km of Coast" = "Within 10km of Coast", "Within 50km of Coast" = "Within 50km of Coast",  "0" = "Neither")
+
+static_plot3 <- waste %>%
+  filter(LEVEL %in% c("Secondary", "Advanced")) %>%
+  ggplot(aes(x = LEVEL)) + 
+  geom_bar(aes(fill = distance), position = "fill") +
+  scale_fill_viridis_d(begin = 0, end = 0.7, labels = c("Beyond 50km of Coast", "Within 10km of Coast", "Within 50km of Coast"), direction = -1) + 
+  labs(x = "Distance of Treatment Plant from Coast", y = "Proportion of WWTPs", fill = "WWTP Treatment Level", title = "Type of Treatment Used based on WWTP Coastal Distance")
+
+ggplotly(static_plot3)
+```
+
+Page 3 Freshwater WWTPs {data-orientation=rows}
+=====================================
+Dilition Factor is the ratio of concentration in the effluent to concentration in the receiving water after mixing in the receiving water ([USGS](https://pubs.usgs.gov/sir/2011/5136/pdf/sir20115136.pdf)). Higher dilution factors are related to higher pollution levels in wastewater.
+   
+Column {data-width=900}
+-------------------------------------
+
+### As the treatment quality increases for each WWTP, the amount of dilution factors also increases, indicating that advanced levels of treatment remove more toxins. There are also very few data points for primary treatment, and this might be because most WWTPS operate using secondary and advanced levels of treatment and only use primary in specific circumstances.
+```{r}
+ waste %>%
+ ggplot(aes(x = RIVER_DIS, y = DF, color = LEVEL)) + 
+  geom_smooth(method = lm, se = TRUE) + geom_point() + 
+  ylim(0, 2e+07) + facet_wrap(~ LEVEL) + 
+  labs(x = "River Outflow Discharge (m^3/day)", y = "Dilution Factor", title ="Dilution Factor amount based on River\nOutflow Discharge and Treatment Level", color = "WWTP Treatment Level", caption = "Few WWTPs used Primary treatment,\nso regression may not be accurate representation") + 
+  scale_color_viridis_d(begin = 0, end = 0.7) + 
+  theme(axis.text.x= element_text(size = 5))
+```
+
+-------------------------------------
+### Higher discharge rates are more frequent among WWTPs operating under secondary treatment levels
+ 
+```{r}
+waste %>%
+  filter(LEVEL %in% c("Secondary", "Advanced")) %>%
+ggplot(aes(x = RIVER_DIS, fill = LEVEL)) + 
+  geom_histogram(color = "black") + 
+  facet_wrap(~ LEVEL) + 
+  xlim(0,5000) + 
+  ylim(0, 750) + 
+  scale_fill_viridis_d(begin = 0, end = 0.7) + 
+  labs(x = "River Outflow Discharge (m^3/day)", y = "Frequency", title = "WWTP River Discharge Frequency Based on Treatment Level", fill = "WWTP Treatment Level")
+```
+
